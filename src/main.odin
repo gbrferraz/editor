@@ -1,5 +1,6 @@
 package editor
 
+import "core:math"
 import rl "vendor:raylib"
 
 Vec3 :: [3]f32
@@ -11,11 +12,12 @@ Transform :: struct {
 }
 
 main :: proc() {
-	rl.SetConfigFlags({.VSYNC_HINT, .MSAA_4X_HINT})
+	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT, .MSAA_4X_HINT})
 	rl.InitWindow(1280, 720, "Level Editor")
 
 	cube := Transform {
-		size = 2,
+		position = {1, 0, 1},
+		size     = 2,
 	}
 
 	camera := rl.Camera {
@@ -29,6 +31,8 @@ main :: proc() {
 	ray: rl.Ray
 	collision: rl.RayCollision
 
+	is_dragging: bool
+
 	for !rl.WindowShouldClose() {
 		if rl.IsCursorHidden() {rl.UpdateCamera(&camera, .FREE)}
 
@@ -38,26 +42,65 @@ main :: proc() {
 			rl.EnableCursor()
 		}
 
-		if rl.IsMouseButtonPressed(.LEFT) {
-			if !collision.hit {
-				ray = rl.GetScreenToWorldRay(rl.GetMousePosition(), camera)
-				collision = rl.GetRayCollisionBox(
-					ray,
+		if rl.IsMouseButtonDown(.LEFT) {
+			ray = rl.GetScreenToWorldRay(rl.GetMousePosition(), camera)
+			collision = rl.GetRayCollisionBox(
+				ray,
+				{
 					{
-						{
-							cube.position.x - cube.size.x / 2,
-							cube.position.y - cube.size.y / 2,
-							cube.position.z - cube.size.z / 2,
-						},
-						{
-							cube.position.x + cube.size.x / 2,
-							cube.position.y + cube.size.y / 2,
-							cube.position.z + cube.size.z / 2,
-						},
+						cube.position.x - cube.size.x / 2,
+						cube.position.y - cube.size.y / 2,
+						cube.position.z - cube.size.z / 2,
 					},
+					{
+						cube.position.x + cube.size.x / 2,
+						cube.position.y + cube.size.y / 2,
+						cube.position.z + cube.size.z / 2,
+					},
+				},
+			)
+			if collision.hit {
+				is_dragging = true
+			}
+		}
+
+		if rl.IsMouseButtonReleased(.LEFT) && is_dragging {
+			is_dragging = false
+		}
+
+		if is_dragging {
+			ray = rl.GetScreenToWorldRay(rl.GetMousePosition(), camera)
+			collision: rl.RayCollision
+			if rl.IsKeyDown(.LEFT_ALT) {
+				collision = rl.GetRayCollisionQuad(
+					ray,
+					{-1000, -1000, cube.position.z},
+					{-1000, 1000, cube.position.z},
+					{1000, 1000, cube.position.z},
+					{1000, -1000, cube.position.z},
 				)
+				if collision.hit {
+					cube.position = {
+						cube.position.x,
+						math.round(collision.point.y),
+						cube.position.z,
+					}
+				}
 			} else {
-				collision.hit = false
+				collision = rl.GetRayCollisionQuad(
+					ray,
+					{-1000, cube.position.y, -1000},
+					{-1000, cube.position.y, 1000},
+					{1000, cube.position.y, 1000},
+					{1000, cube.position.y, -1000},
+				)
+				if collision.hit {
+					cube.position = {
+						math.round(collision.point.x),
+						math.round(collision.point.y),
+						math.round(collision.point.z),
+					}
+				}
 			}
 		}
 
@@ -86,9 +129,18 @@ main :: proc() {
 		rl.EndMode3D()
 
 		right_panel := rl.Rectangle{f32(rl.GetScreenWidth()) - 300, 0, 300, 50}
-		rl.DrawRectangleRec(right_panel, rl.GRAY)
+		layout := layout_start(right_panel)
 
-		rl.DrawText("Transform", i32(right_panel.x), i32(right_panel.y), 20, rl.BLACK)
+		rl.DrawRectangleRec(right_panel, rl.GRAY)
+		ui_label(&layout, "Transform")
+		transform_string := rl.TextFormat(
+			"X: %f, Y: %f, Z: %f",
+			cube.position.x,
+			cube.position.y,
+			cube.position.z,
+		)
+
+		ui_label(&layout, transform_string)
 
 		rl.EndDrawing()
 	}
